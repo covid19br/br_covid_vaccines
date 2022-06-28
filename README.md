@@ -1,6 +1,6 @@
 # Repositório com código para limpeza e processamento de dados do SI-PNI disponibilizados no OPENDATASUS
 
-Os dados processados com este código são disponibilizados semanalmente no repositório https://github.com/covid19br/dados-vacinas
+Os dados processados com este código são atualizados semanalmente no repositório https://github.com/covid19br/dados-vacinas
 
 O script para download, limpeza e processamento dos dados é executado em Bash script.
 Para executá-lo, utilize ./roda_base.sh
