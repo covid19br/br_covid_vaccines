@@ -19,8 +19,9 @@ O código para cálculo das coberturas de doses por estado por ordem de aplicaç
 
 Para reproduzir o código, mantenha a mesma estrutura de pastas deste repositório ( "dados/", "figuras/" e "output/", e seus subdiretórios)
 
+No caso de dúvidas, entre em contato: Marcelo Eduardo Borges (meborges.b [at] gmail [dot] com) 
+
 OBSERVATÓRIO COVID-19 BR<br />
 Website: https://covid19br.github.io/<br />
 Repositório: https://github.com/covid19br<br />
 <br />
-No caso de dúvidas, entre em contato: Marcelo Eduardo Borges (meborges.b [at] gmail [dot] com) 
