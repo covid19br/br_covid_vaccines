@@ -22,6 +22,5 @@ Para reproduzir o código, mantenha a mesma estrutura de pastas deste repositór
 No caso de dúvidas, entre em contato: Marcelo Eduardo Borges (meborges.b [at] gmail [dot] com) 
 
 OBSERVATÓRIO COVID-19 BR<br />
-Website: https://covid19br.github.io/<br />
-Repositório: https://github.com/covid19br<br />
+https://covid19br.github.io/<br />
 <br />
