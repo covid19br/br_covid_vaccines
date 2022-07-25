@@ -78,6 +78,21 @@ data_base <- list.files("dados/") %>%
                 as.Date() %>%
                 max(na.rm = T)
 
+if(is.infinite(data_base)) {
+  print("Data em '^dados_.*.csv' não encontrada. Tentando ^limpo_dados_.*.csv")
+  data_base <- list.files("dados/") %>% 
+    grep("^limpo_dados_.*.csv", ., value = T) %>%
+    substr(13,22) %>%
+    as.Date() %>%
+    max(na.rm = T)
+}
+
+# Salvar data da base em formato para titulo de arquivo
+data_base_title <- format(as.Date(data_base), format = "%Y_%m_%d")
+
+# Arquivo de output
+output_folder = "output/"
+
 #### Calcular a cobertura de doses por estado
 
 # Horário e data de início do processamento dos dados
@@ -123,6 +138,10 @@ for(i in files) {
   # Converte coluna de idade em fator
   df2$agegroup <- factor(df2$agegroup, levels = c(1:11))
   
+  agegroup1 <- sum(df2$agegroup==1, na.rm = T)
+  
+  before_filter_date <- nrow(df2)
+  
   # Calcular a diferença de tempo em dias entre cada tipo de dose e a data de referência
   df2 <- df2 %>% mutate(dif1 = as.numeric(data_D1 - first.day),
                        dif2 = as.numeric(data_D2 - first.day),
@@ -131,6 +150,8 @@ for(i in files) {
                 filter(!(difR %leNAF% dif2)) %>%
                 filter(!(dif2 %leNAF% dif1))
 
+  after_filter_date <- nrow(df2)
+  
   # Calcular a sequência de datas da dose
   df2$next_order = apply(df2[,c("dif1","dif2","difU","difR")], 1, which_order)
   
@@ -157,6 +178,10 @@ for(i in files) {
   
   # Sobrepõe e registra das datas de acordo com a data de D quando esta for a primeira dose
   df2$data[which(df2$dose == "D")] <- df2$data_D[which(df2$dose == "D")]
+  
+  # Calcular linhas com NA para dose e agegroup
+  drop_na_dose <- sum(is.na(df2$dose))
+  drop_na_agegroup <- sum(is.na(df2$agegroup))
   
   # Criar um primeiro data.frame com as datas de D1 e D
   # Calcula a frequência de D1 e D por data e faixa etária (agegroup).
@@ -363,6 +388,34 @@ for(i in files) {
   
   fwrite(da_month, file = "output/doses_cobertura_proporcao_mes.csv")
   fwrite(da_week, file = "output/doses_cobertura_proporcao_semana.csv")
+  
+  # Salvar log
+  
+  log_table <- data.frame(before_filter_date = before_filter_date,
+                        after_filter_date = after_filter_date,
+                        drop_na_dose = drop_na_dose,
+                        drop_na_agegroup = drop_na_agegroup,
+                        agegroup1  = agegroup1,
+                        state = state,
+                        indice = 0)
+  
+  filename <- paste0("log_cobertura_", data_base_title,".csv")
+  
+  if(any(grepl(paste0("log_cobertura_", data_base_title), list.files(paste0(output_folder,"log/"))))) {
+    
+    # Acrescenta o log para o arquivo anterior
+    
+    log_table_todos <- read.csv(paste0(output_folder,"log/",filename), row.names = 1)
+    log_table_todos <- bind_rows(log_table_todos, log_table)
+    write.csv(log_table_todos, file = paste0(output_folder, "log/", filename))
+    
+  } else {
+    
+    # Cria um arquivo novo
+    write.csv(log_table, file = paste0(output_folder, "log/", filename))
+    
+  }
+  
 }
 
 ### Calcular cobertura para SP (estado com split)
@@ -376,12 +429,16 @@ df_month_split <- data.frame()
 # Tabela de cobertura de doses por semana para arquivos separados
 df_week_split <- data.frame()
 
+indice = 0
+
 # Iniciar loop para os arquivos selecionados
 for(i in files) {
 
   # Salva a sigla do estado, de acordo com o nome do arquivo
   state = substr(i,22,23)
   print(substr(i,22,25))
+  
+  indice = indice + 1
   
   # Ler tabela em formato wide
   # Esta tabela carrega apenas as datas de D1, D2, Reforço (R) e Dose Janssen (D)
@@ -403,7 +460,11 @@ for(i in files) {
   # Converte coluna de idade em fator
   df2$agegroup <- factor(df2$agegroup, levels = c(1:11))
 
+  agegroup1 <- sum(df2$agegroup==1, na.rm = T)
+  
   # Calcular a diferença de tempo em dias entre cada tipo de dose e a data de referência
+  before_filter_date <- nrow(df2)
+  
   df2 <- df2 %>% mutate(dif1 = as.numeric(data_D1 - first.day),
                         dif2 = as.numeric(data_D2 - first.day),
                         difR = as.numeric(data_R - first.day),
@@ -411,6 +472,8 @@ for(i in files) {
     filter(!(difR %leNAF% dif2)) %>%
     filter(!(dif2 %leNAF% dif1))
 
+  after_filter_date <- nrow(df2)
+  
   # Calcular a sequência de datas da dose
   # Divide a tabela em 10 blocos, para processamento de cada bloco separadamente
   cuts <- seq(1,nrow(df2),length.out = 10)
@@ -429,6 +492,10 @@ for(i in files) {
   
   df2$next_order = next_order
 
+  # Calcular linhas com NA para dose e agegroup
+  drop_na_dose <- sum(is.na(df2$dose))
+  drop_na_agegroup <- sum(is.na(df2$agegroup))
+  
   # Datas para D1 e D
   
   # Reseta a classificação de doses
@@ -648,6 +715,33 @@ for(i in files) {
   # ACrescentar linhas de dados processados de cada arquivo
   df_month_split <- bind_rows(df_month_split, df_month)  
   df_week_split <- bind_rows(df_week_split, df_week)  
+  
+  # Salvar log
+  
+  log_table <- data.frame(before_filter_date = before_filter_date,
+                          after_filter_date = after_filter_date,
+                          drop_na_dose = drop_na_dose,
+                          drop_na_agegroup = drop_na_agegroup,
+                          agegroup1  = agegroup1,
+                          state = state,
+                          indice = indice)
+  
+  filename <- paste0("log_cobertura_", data_base_title,".csv")
+  
+  if(any(grepl(paste0("log_cobertura_", data_base_title), list.files(paste0(output_folder,"log/"))))) {
+    
+    # Acrescenta o log para o arquivo anterior
+    
+    log_table_todos <- read.csv(paste0(output_folder,"log/",filename), row.names = 1)
+    log_table_todos <- bind_rows(log_table_todos, log_table)
+    write.csv(log_table_todos, file = paste0(output_folder, "log/", filename))
+    
+  } else {
+    
+    # Cria um arquivo novo
+    write.csv(log_table, file = paste0(output_folder, "log/", filename))
+    
+  }
   
 }
 

@@ -14,8 +14,20 @@ if(!require(optparse)){install.packages("scales"); library(optparse)}
 
 doses_nomes <- function(x){
   
-  if(grepl("Reforço",x,ignore.case = T)){
+  if(grepl("^Reforço",x,ignore.case = T)){
     return("R")
+  }
+  
+  if(grepl("2º Reforço",x,ignore.case = T)){
+    return("R2")
+  }
+  
+  if(grepl("3º Reforço",x,ignore.case = T)){
+    return("R3")
+  }
+  
+  if(grepl("Reforço",x,ignore.case = T)){
+    return("Ro")
   }
   
   if(grepl("1",x)){
@@ -105,14 +117,21 @@ prepare_table <- function(estado,
       # Padroniza os códigos das vacinas
       # Atenção: Se for utilizado no banco de dados um novo código para vacina (campo vacina_codigo), esta parte do código de verá ser atualizada
       
+      nvac = length(unique(todas_vacinas$vacina_codigo))
+      vac_codes = paste(sort(unique(todas_vacinas$vacina_codigo)), collapse = " ")
+      
       todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 89] <- 85
       todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 98] <- 86
       todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 99] <- 87
       
       # Remove registros duplicados
+      before_rem_dupli = nrow(todas_vacinas)
+      
       todas_vacinas <- todas_vacinas %>% 
-        distinct(paciente_id,vacina_descricao_dose,.keep_all = TRUE) %>% 
+      # distinct(paciente_id,vacina_descricao_dose,.keep_all = TRUE) %>% 
         distinct(paciente_id,vacina_dataAplicacao,.keep_all = TRUE)
+      
+      after_rem_dupli = nrow(todas_vacinas)
   
       # Classifica as doses e converte em fator
       todas_vacinas$dose <- as.factor(sapply(todas_vacinas$vacina_descricao_dose,doses_nomes))
@@ -150,14 +169,24 @@ prepare_table <- function(estado,
       
       # Limpeza de dados
       # Filtra apenas registros entre a data da base e a data de início da campanha de vacinação
+      before_filter_date = nrow(todas_vacinas)
+      
       todas_vacinas <- todas_vacinas %>% 
         filter(vacina_dataAplicacao < as.Date(data_base) & vacina_dataAplicacao >= as.Date("2021-01-17"))
       
+      after_filter_date = nrow(todas_vacinas)
+      
       # Remove arquivos com informações faltantes (NA)
+      before_dropna = nrow(todas_vacinas)
       todas_vacinas <- todas_vacinas %>% drop_na()
+      after_dropna = nrow(todas_vacinas)
       
       # Filtra pacientes com data de nascimento registrada antes de 1900
+      before_filter_1900 = nrow(todas_vacinas)
+      
       todas_vacinas <- todas_vacinas %>% filter(paciente_dataNascimento > "1900-01-01")
+      
+      after_filter_1900 = nrow(todas_vacinas)
       
       ##
       print("Preparing data... part 2")
@@ -166,15 +195,20 @@ prepare_table <- function(estado,
       
       # Filtra apenas registros com os códigos das 4 vacinas
       # Atenção: Se for utilizado no banco de dados um novo código para vacina (campo vacina_codigo), esta parte do código de verá ser atualizada
+      before_filter_vac = nrow(todas_vacinas)
       
       todas_vacinas <- todas_vacinas %>% 
         filter(vacina_codigo %in% c(85,86,87,88)) %>% 
         select(-vacina_descricao_dose)
       
+      after_filter_vac = nrow(todas_vacinas)
+      
       # Atualiza o nome das colunas para tornar o código mais limpo
       colnames(todas_vacinas) <- c("id", "nasc", "data","vacina","doses")
       
       # Filtra registros com mais de 6 doses por id_individuo
+      
+      before_filter_doseid = nrow(todas_vacinas)
       
       todas_vacinas <- todas_vacinas %>% 
                           group_by(id) %>% 
@@ -182,25 +216,39 @@ prepare_table <- function(estado,
                           ungroup() %>% 
                           filter(n < 6)
       
+      after_filter_doseid = nrow(todas_vacinas)
+      
+      # Calcula quando existe mais de um tipo de dose por id_individuo
+      
+      same_dose_id <- todas_vacinas %>%
+        group_by(id, doses) %>%
+        mutate(m = 1:n()) %>%
+        filter(m > 1) %>%
+        nrow()
+      
       # Filtra se tiver mais de um tipo de dose por id_individuo
       
-      ## Encontra ids com mais deu um tipo de dose por id_individuo
-      remove_ids <- todas_vacinas %>% 
-        group_by(id, doses) %>% 
-        mutate(m = n()) %>% 
-        ungroup() %>%
-        filter(m > 1) %>%
-        select(id)
-      
-      ## Caso encontre id_individuos com esta condição, remove do banco de dados
-      if(nrow(remove_ids)>0) {
-        todas_vacinas = todas_vacinas %>% 
-          filter(!(id %in% remove_ids$id)) %>% 
-          mutate(id = droplevels(id))
-      }
-      
-      ## Remove objeto com identificação dos id_individuos com repetição do doses, e limpa memória ram
-      rm(remove_ids);gc()
+      # ## Encontra ids com mais deu um tipo de dose por id_individuo
+      # before_remove_id = nrow(todas_vacinas)
+      # 
+      # remove_ids <- todas_vacinas %>% 
+      #   group_by(id, doses) %>% 
+      #   mutate(m = n()) %>% 
+      #   ungroup() %>%
+      #   filter(m > 1) %>%
+      #   select(id)
+      # 
+      # ## Caso encontre id_individuos com esta condição, remove do banco de dados
+      # if(nrow(remove_ids)>0) {
+      #   todas_vacinas = todas_vacinas %>% 
+      #     filter(!(id %in% remove_ids$id)) %>% 
+      #     mutate(id = droplevels(id))
+      # }
+      # 
+      # after_remove_id = nrow(todas_vacinas)
+      # 
+      # ## Remove objeto com identificação dos id_individuos com repetição do doses, e limpa memória ram
+      # rm(remove_ids);gc()
       
       # Calcula a idade no momento da primeira dose
       
@@ -213,6 +261,46 @@ prepare_table <- function(estado,
       
       # Salva dados
       fwrite(todas_vacinas, file = paste0(output_folder, estado,"_",indice, "_PNI_clean.csv"))
+      
+      # Salvar log
+      
+      log_table <- data.frame(nvac = nvac,
+                              vac_codes = vac_codes,
+                              before_rem_dupli = before_rem_dupli,
+                              after_rem_dupli = after_rem_dupli,
+                              before_filter_date = before_filter_date,
+                              after_filter_date = after_filter_date,
+                              before_dropna = before_dropna,
+                              after_dropna = after_dropna,
+                              before_filter_1900 = before_filter_1900,
+                              after_filter_1900 = after_filter_1900,
+                              before_filter_vac = before_filter_vac,
+                              after_filter_vac = after_filter_vac,
+                              before_filter_doseid = before_filter_doseid,
+                              after_filter_doseid = after_filter_doseid,
+                              same_dose_id = same_dose_id,
+                             # before_remove_id = before_remove_id,
+                             # after_remove_id = after_remove_id,
+                              state = estado,
+                              indice = indice)
+      
+      filename <- paste0("log_", data_base_title,".csv")
+      
+      if(any(grepl(data_base_title, list.files(paste0(output_folder,"log/"))))) {
+        
+        # Acrescenta o log para o arquivo anterior
+        
+        log_table_todos <- read.csv(paste0(output_folder,"log/",filename), row.names = 1)
+        log_table_todos <- bind_rows(log_table_todos, log_table)
+        write.csv(log_table_todos, file = paste0(output_folder, "log/", filename))
+        
+      } else {
+        
+        # Cria um arquivo novo
+        write.csv(log_table, file = paste0(output_folder, "log/", filename))
+        
+      }
+      
     }
   } else {
     
@@ -233,15 +321,24 @@ prepare_table <- function(estado,
     print(paste0(estado, " data succesfully loaded. Preparing data... 1"))
     
     # Padroniza os códigos das vacinas
+    
+    nvac = length(unique(todas_vacinas$vacina_codigo))
+    vac_codes = paste(sort(unique(todas_vacinas$vacina_codigo)), collapse = " ")
+    
     # Atenção: Se for utilizado no banco de dados um novo código para vacina (campo vacina_codigo), esta parte do código de verá ser atualizada
     todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 89] <- 85
     todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 98] <- 86
     todas_vacinas$vacina_codigo[todas_vacinas$vacina_codigo == 99] <- 87
     
     # Remove registros duplicados
+    
+    before_rem_dupli = nrow(todas_vacinas) 
+      
     todas_vacinas <- todas_vacinas %>% 
-      distinct(paciente_id,vacina_descricao_dose,.keep_all = TRUE) %>% 
+     #distinct(paciente_id,vacina_descricao_dose,.keep_all = TRUE) %>% 
       distinct(paciente_id,vacina_dataAplicacao,.keep_all = TRUE)
+    
+    after_rem_dupli = nrow(todas_vacinas)
     
     # Classifica as doses e converte em fator
     todas_vacinas$dose <- as.factor(sapply(todas_vacinas$vacina_descricao_dose,doses_nomes))
@@ -278,14 +375,27 @@ prepare_table <- function(estado,
     
     # Limpeza de dados
     # Filtra apenas registros entre a data da base e a data de início da campanha de vacinação
+    
+    before_filter_date = nrow(todas_vacinas)
+    
     todas_vacinas <- todas_vacinas %>% 
       filter(vacina_dataAplicacao < as.Date(data_base) & vacina_dataAplicacao >= as.Date("2021-01-17"))
     
+    after_filter_date = nrow(todas_vacinas)
+    
     # Remove arquivos com informações faltantes (NA)
+    before_dropna = nrow(todas_vacinas)
+    
     todas_vacinas <- todas_vacinas %>% drop_na()
     
+    after_dropna = nrow(todas_vacinas)
+    
     # Filtra pacientes com data de nascimento registrada antes de 1900
+    before_filter_1900 = nrow(todas_vacinas)
+    
     todas_vacinas <- todas_vacinas %>% filter(paciente_dataNascimento > "1900-01-01")
+    
+    after_filter_1900 = nrow(todas_vacinas)
     
     ##
     print(paste0("Preparing data... 2 (", estado, ")"))
@@ -293,39 +403,57 @@ prepare_table <- function(estado,
     # Filtra apenas registros com os códigos das 4 vacinas
     # Atenção: Se for utilizado no banco de dados um novo código para vacina (campo vacina_codigo), esta parte do código de verá ser atualizada
     
+    before_filter_vac = nrow(todas_vacinas)
+    
     todas_vacinas <- todas_vacinas %>% 
                       filter(vacina_codigo %in% c(85,86,87,88)) %>% 
                       select(-vacina_descricao_dose)
+    
+    after_filter_vac = nrow(todas_vacinas)
     
     # Atualiza o nome das colunas para tornar o código mais limpo
     colnames(todas_vacinas) <- c("id", "nasc", "data","vacina","doses")
     
     # Filtra registros com mais de 6 doses por id_individuo
+    before_filter_doseid = nrow(todas_vacinas)
+    
     todas_vacinas <- todas_vacinas %>% 
                         group_by(id) %>%
                         mutate(n = n()) %>%
                         ungroup() %>%
                         filter(n < 6)
     
-    # Filtra se tiver mais de um tipo de dose por id_individuo
+    after_filter_doseid = nrow(todas_vacinas)
     
-    ## Encontra ids com mais deu um tipo de dose por id_individuo      
-    remove_ids <- todas_vacinas %>% 
-      group_by(id, doses) %>% 
-      mutate(m = n()) %>% 
-      ungroup() %>%
-      filter(m > 1) %>%
-      select(id)
+    # Calcula quando existe mais de um tipo de dose por id_individuo
     
-    ## Caso encontre id_individuos com esta condição, remove do banco de dados
-    if(nrow(remove_ids)>0) {
-      todas_vacinas = todas_vacinas %>% 
-        filter(!(id %in% remove_ids$id)) %>% 
-        mutate(id = droplevels(id))
-    }
-  
+    same_dose_id <- todas_vacinas %>%
+                        group_by(id, doses) %>%
+                        mutate(m = 1:n()) %>%
+                        filter(m > 1) %>%
+                        nrow()
+      
+    # ## Encontra ids com mais deu um tipo de dose por id_individuo      
+    # before_remove_id = nrow(todas_vacinas)
+    # 
+    # remove_ids <- todas_vacinas %>% 
+    #   group_by(id, doses) %>% 
+    #   mutate(m = n()) %>% 
+    #   ungroup() %>%
+    #   filter(m > 1) %>%
+    #   select(id)
+    # 
+    # ## Caso encontre id_individuos com esta condição, remove do banco de dados
+    # if(nrow(remove_ids)>0) {
+    #   todas_vacinas = todas_vacinas %>% 
+    #     filter(!(id %in% remove_ids$id)) %>% 
+    #     mutate(id = droplevels(id))
+    # }
+    # 
+    # after_remove_id = nrow(todas_vacinas)
+    
   ## Remove objeto com identificação dos id_individuos com repetição do doses, e limpa memória ram
-  rm(remove_ids);gc()
+  #rm(remove_ids);gc()
   
   # Calcula a idade no momento da primeira dose
   todas_vacinas <- todas_vacinas%>% 
@@ -339,6 +467,46 @@ prepare_table <- function(estado,
   filename = paste0(output_folder, estado, "_PNI_clean.csv")
   print(paste0("Salvando: ", filename))
   fwrite(todas_vacinas, file = filename)
+  
+  # Salvar log
+  
+  log_table <- data.frame(nvac = nvac,
+                          vac_codes = vac_codes,
+                          before_rem_dupli = before_rem_dupli,
+                          after_rem_dupli = after_rem_dupli,
+                          before_filter_date = before_filter_date,
+                          after_filter_date = after_filter_date,
+                          before_dropna = before_dropna,
+                          after_dropna = after_dropna,
+                          before_filter_1900 = before_filter_1900,
+                          after_filter_1900 = after_filter_1900,
+                          before_filter_vac = before_filter_vac,
+                          after_filter_vac = after_filter_vac,
+                          before_filter_doseid = before_filter_doseid,
+                          same_dose_id = same_dose_id,
+                         # after_filter_doseid = after_filter_doseid,
+                        #  before_remove_id = before_remove_id,
+                          #after_remove_id = after_remove_id,
+                          state = estado,
+                          indice = 0)
+  
+  filename <- paste0("log_", data_base_title,".csv")
+  
+  if(any(grepl(data_base_title, list.files(paste0(output_folder,"log/"))))) {
+  
+  # Acrescenta o log para o arquivo anterior
+    
+  log_table_todos <- read.csv(paste0(output_folder,"log/",filename), row.names = 1)
+  log_table_todos <- bind_rows(log_table_todos, log_table)
+  write.csv(log_table_todos, file = paste0(output_folder, "log/", filename))
+  
+  } else {
+  
+  # Cria um arquivo novo
+  write.csv(log_table, file = paste0(output_folder, "log/", filename))
+  
+  }
+  
   }
 }
 
@@ -495,7 +663,7 @@ prepara_historico <- function(estado = "SP",
   
   # Une a tabela em formato wide com a classificação da faixa etária de cada grupo  
   tabela_wide_split = tabela_wide_split %>%
-                        right_join(tabela_id_idade, by = "id", na_matches = "never") %>% 
+                        left_join(tabela_id_idade, by = "id", na_matches = "never") %>% 
                         select(-id)
   
   # Remove tabela 'todas_vacinas' e limpa a memória ram
