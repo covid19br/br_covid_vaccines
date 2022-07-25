@@ -24,3 +24,6 @@ No caso de dúvidas, entre em contato: Marcelo Eduardo Borges (meborges.b [at] g
 OBSERVATÓRIO COVID-19 BR<br />
 https://covid19br.github.io/<br />
 <br />
+
+Última atualização: 27 de julho de 2022
+* Alterações no código para corrigir o modo de contagem de doses de reforço. Antes da correção, muitos registros duplicados de doses de reforço eram excluídos, pois o código considerava duplicação de registro ("R"). Com as novas mudanças, mesmo que um mesmo id possua mais de uma dose com a mesma descrição de dose, cada dose será contabilizada como uma dose diferente.
